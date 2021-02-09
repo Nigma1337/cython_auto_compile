@@ -1,5 +1,6 @@
 import argparse, os
 from subprocess import Popen
+import time
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Turn a normal python file into a cython optimised one')
     parser.add_argument("file", metavar='F', type=str, help='file to run compilation on')
@@ -9,7 +10,6 @@ if __name__ == "__main__":
     with open(args.file, "a") as f:
         f.write("\nfor i in [s for s in dir() if not '__' in s]: print(i, eval('type(%s)'%i))")
     variables = {}
-    #p = Popen([command], shell=True)
     with open(args.data, "r") as f:
         for line in f.readlines():
             command = "python %s/%s %s" % (os.getcwd(), args.file, line)
@@ -29,16 +29,21 @@ if __name__ == "__main__":
                 # If its not false, assume its a new var and add.
                 elif variables.get(var_name) != False:
                     variables[var_name] = var_type
-        print(variables)
     # Add CDEFs
-    with open(args.file+"x", "a") as optimised_file:
+    with open(args.file+"x", "a+") as optimised_file:
         with open(args.file, "r") as f:
             for line in f.readlines():
-                print(line.replace(" ", ""))
+                if line.startswith("for i in [s for s in dir() if not '__' in s]: print(i, eval('type(%s)'%i))"):
+                    continue
                 no_whitespace = line.replace(" ", "")
                 leading_whitespace = len(line)-len(line.lstrip(' '))
                 leading_whitespace = ' '*leading_whitespace
                 for key in variables.keys():
                     if no_whitespace.startswith(key+"=") and variables[key] != False:
-                        line = leading_whitespace+"cdef %s %s" % (variables[key], line.lstrip(' '))
+                        line = leading_whitespace+"cpdef %s %s" % (variables[key], line.lstrip(' '))
                 optimised_file.write(line)
+    # Cython compile script
+    with open('setup.py', "w+") as setup:
+        setup.write("from setuptools import setup\nfrom Cython.Build import cythonize\nsetup(\n    ext_modules=cythonize('%sx')\n)"%args.file)
+    p = os.popen("python setup.py build_ext -i")
+    print(p.readlines())
